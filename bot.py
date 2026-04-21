@@ -2,7 +2,7 @@ import asyncio
 import random
 import logging
 from pathlib import Path
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 from playwright_stealth import Stealth
 
 # Configure Logging
@@ -171,6 +171,10 @@ async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, 
 
             except PlaywrightTimeoutError:
                 logger.error(f"[{proxy_server}] Proxy Timeout.")
+            except PlaywrightError as pe:
+                # Cleanly catch Playwright network errors without dumping the giant call log
+                error_msg = str(pe).split('\n')[0]
+                logger.error(f"[{proxy_server}] Playwright Error: {error_msg}")
             except Exception as e:
                 logger.error(f"[{proxy_server}] Unexpected error: {e}")
             finally:
