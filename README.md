@@ -73,17 +73,17 @@ The parser intelligently handles multiple formats and protocols (HTTP, SOCKS4, S
 
 Supported Formats Examples:
 
-# Basic IP:Port (Defaults to HTTP)
+## Basic IP:Port (Defaults to HTTP)
 192.168.1.1:8080
 
-# IP:Port with Authentication
+## IP:Port with Authentication
 192.168.1.100:8000:myuser:mypassword
 
-# Explicit Protocol (SOCKS5/SOCKS4)
+## Explicit Protocol (SOCKS5/SOCKS4)
 socks5://212.58.132.5:1080
 socks4://98.175.31.222:4145
 
-# Explicit Protocol with Authentication (URI format)
+## Explicit Protocol with Authentication (URI format)
 [http://myuser:mypassword@192.168.1.150:8888](http://myuser:mypassword@192.168.1.150:8888)
 
 
