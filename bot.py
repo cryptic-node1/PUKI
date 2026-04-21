@@ -2,8 +2,7 @@ import asyncio
 import random
 import logging
 from pathlib import Path
-from fake_useragent import UserAgent
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 from playwright_stealth import Stealth
 
 # Configure Logging
@@ -15,8 +14,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
-TARGET_SELECTOR = "button#submit-action, .click-me, text='Submit'" # Flexible selector
+TARGET_SELECTOR = "button#submit-action, .click-me, button:has-text('Submit')" # Flexible selector
 IP_LIST_FILE = "ip-list.txt"
+UA_LIST_FILE = "ua-list.txt"
 NAVIGATION_TIMEOUT = 30000 # 30 seconds
 
 def load_proxies(filepath: str) -> list:
@@ -73,13 +73,28 @@ def load_proxies(filepath: str) -> list:
             
     return proxies
 
-def generate_headers() -> dict:
+def load_user_agents(filepath: str) -> list:
     """
-    Generates a randomized modern User-Agent using fake-useragent.
+    Parses the ua-list.txt file and returns a list of User-Agents.
     """
-    ua = UserAgent(browsers=['chrome', 'edge', 'firefox'], os='windows')
+    uas = []
+    path = Path(filepath)
+    
+    if not path.exists():
+        logger.error(f"User-Agent file {filepath} not found.")
+        return uas
+
+    with open(path, 'r', encoding='utf-8') as file:
+        uas = [line.strip() for line in file if line.strip()]
+        
+    return uas
+
+def generate_headers(user_agents: list) -> dict:
+    """
+    Picks a random User-Agent from the provided list.
+    """
     return {
-        "User-Agent": ua.random,
+        "User-Agent": random.choice(user_agents),
         "Accept-Language": "en-US,en;q=0.9",
     }
 
@@ -102,12 +117,12 @@ async def human_like_interaction(page):
     # Slight scroll back
     await page.mouse.wheel(0, -random.randint(50, 200))
 
-async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, selector: str):
+async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, selector: str, user_agents: list):
     """
     The core logic: launches a context via proxy, visits the URL, acts human, and clicks.
     """
     async with semaphore:
-        headers = generate_headers()
+        headers = generate_headers(user_agents)
         user_agent = headers.pop("User-Agent")
         proxy_server = proxy.get("server")
         
@@ -156,6 +171,10 @@ async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, 
 
             except PlaywrightTimeoutError:
                 logger.error(f"[{proxy_server}] Proxy Timeout.")
+            except PlaywrightError as pe:
+                # Cleanly catch Playwright network errors without dumping the giant call log
+                error_msg = str(pe).split('\n')[0]
+                logger.error(f"[{proxy_server}] Playwright Error: {error_msg}")
             except Exception as e:
                 logger.error(f"[{proxy_server}] Unexpected error: {e}")
             finally:
@@ -180,13 +199,20 @@ async def main():
 
     logger.info("Initializing Automation Suite...")
     
-    # 1. Load Proxies
+    # 1. Load Proxies and User-Agents
     proxies = load_proxies(IP_LIST_FILE)
     if not proxies:
         logger.error("No valid proxies loaded. Exiting.")
         return
     
     logger.info(f"Loaded {len(proxies)} proxies from {IP_LIST_FILE}.")
+
+    user_agents = load_user_agents(UA_LIST_FILE)
+    if not user_agents:
+        logger.error("No valid User-Agents loaded. Exiting.")
+        return
+    
+    logger.info(f"Loaded {len(user_agents)} User-Agents from {UA_LIST_FILE}.")
 
     # 2. Setup Concurrency Limit Semaphore
     semaphore = asyncio.Semaphore(concurrency_limit)
@@ -195,7 +221,7 @@ async def main():
     tasks = []
     for proxy in proxies:
         task = asyncio.create_task(
-            automation_cycle(semaphore, proxy, target_url, TARGET_SELECTOR)
+            automation_cycle(semaphore, proxy, target_url, TARGET_SELECTOR, user_agents)
         )
         tasks.append(task)
         
