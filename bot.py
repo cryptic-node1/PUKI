@@ -131,37 +131,38 @@ async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, 
         async with async_playwright() as p:
             browser = None
             try:
-                # Launch Chromium (Headless by default; set to False for debugging)
+                # Launch Chromium
                 browser = await p.chromium.launch(headless=True)
                 
-                # Create a strict, isolated context for this specific proxy to prevent leakage
+                # Create isolated context with ignore_https_errors=True to bypass certificate issues
                 context = await browser.new_context(
                     proxy=proxy,
                     user_agent=user_agent,
                     extra_http_headers=headers,
+                    ignore_https_errors=True,
                     viewport={"width": random.randint(1024, 1920), "height": random.randint(768, 1080)}
                 )
                 
-                # Apply stealth logic to the entire context (v2.x API standard)
+                # Apply stealth logic (v2.x API)
                 stealth = Stealth()
                 await stealth.apply_stealth_async(context)
                 
                 page = await context.new_page()
                 
-                # Navigate to the target with a networkidle wait state
+                # Navigate
                 logger.info(f"[{proxy_server}] Navigating to {url} ...")
                 await page.goto(url, wait_until="networkidle", timeout=NAVIGATION_TIMEOUT)
                 
-                # Perform human-like behavior
+                # Human interaction
                 logger.info(f"[{proxy_server}] Performing human-like interactions ...")
                 await human_like_interaction(page)
                 
-                # Wait random.uniform(2, 5) seconds before clicking
+                # Delay
                 delay = random.uniform(2.0, 5.0)
                 logger.info(f"[{proxy_server}] Waiting {delay:.2f} seconds before click ...")
                 await asyncio.sleep(delay)
                 
-                # Locate the button using the flexible selector and click
+                # Click
                 locator = page.locator(selector).first
                 if await locator.is_visible():
                     await locator.click(timeout=10000)
@@ -172,19 +173,16 @@ async def automation_cycle(semaphore: asyncio.Semaphore, proxy: dict, url: str, 
             except PlaywrightTimeoutError:
                 logger.error(f"[{proxy_server}] Proxy Timeout.")
             except PlaywrightError as pe:
-                # Cleanly catch Playwright network errors without dumping the giant call log
                 error_msg = str(pe).split('\n')[0]
                 logger.error(f"[{proxy_server}] Playwright Error: {error_msg}")
             except Exception as e:
                 logger.error(f"[{proxy_server}] Unexpected error: {e}")
             finally:
-                # Graceful Exit: Always close the browser to free resources
                 if browser:
                     await browser.close()
                     logger.debug(f"[{proxy_server}] Browser context closed.")
 
 async def main():
-    # --- USER INPUT ---
     target_url = input("Enter the target URL (e.g., https://example.com): ").strip()
     if not target_url:
         logger.error("Target URL cannot be empty. Exiting.")
@@ -199,7 +197,6 @@ async def main():
 
     logger.info("Initializing Automation Suite...")
     
-    # 1. Load Proxies and User-Agents
     proxies = load_proxies(IP_LIST_FILE)
     if not proxies:
         logger.error("No valid proxies loaded. Exiting.")
@@ -214,10 +211,8 @@ async def main():
     
     logger.info(f"Loaded {len(user_agents)} User-Agents from {UA_LIST_FILE}.")
 
-    # 2. Setup Concurrency Limit Semaphore
     semaphore = asyncio.Semaphore(concurrency_limit)
     
-    # 3. Create and Gather Tasks
     tasks = []
     for proxy in proxies:
         task = asyncio.create_task(
@@ -225,7 +220,6 @@ async def main():
         )
         tasks.append(task)
         
-    # Wait for all iterations to finish
     await asyncio.gather(*tasks)
     
     logger.info("Automation suite finished execution.")
